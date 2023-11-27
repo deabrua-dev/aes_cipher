@@ -120,46 +120,15 @@ fn key_expansion(key: &[u8], mode: &usize) -> Vec<[u8; 4]> {
     expanded_key
 }
 
-pub fn encrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<Vec<u8>, String> {
-    if text.len() % 16 != 0 {
-        return Err("Error!".to_string());
-    }
-    let mode_index = mode as usize;
-    let key_schedule = key_expansion(key, &mode_index);
+fn pad(text: &[u8]) -> Vec<u8> {
     let mut result = vec![0; text.len()];
-    let mut start_index = 0;
-    for block in text.chunks(16) {
-        let temp = encrypt_block(block.try_into().unwrap(), &key_schedule, &mode_index);
-        let end_index = start_index + temp.len();
-        result[start_index..end_index].copy_from_slice(&temp[..]);
-        start_index += temp.len();
+    let mut pad_size = 16 - (text.len() % 16);
+    if pad_size == 0 {
+        pad_size = 16;
     }
-    Ok(result)
-}
-
-fn encrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8; 16] {
-    let mut result = [0; 16];
-    let mut state = [[0; 4]; 4];
-
-    for i in 0..16 {
-        state[i % 4][i / 4] = block[i];
-    }
-    state = add_round_key(state, key_schedule[0..4].to_vec().try_into().unwrap());
-
-    for i in 1..NR[*mode] {
-        state = sub_bytes(state);
-        state = shift_rows(state);
-        state = mix_columns(state);
-        state = add_round_key(state, key_schedule[i * 4..(i+1)*4].to_vec().try_into().unwrap());
-    }
-    state = sub_bytes(state);
-    state = shift_rows(state);
-    state = add_round_key(state, key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4].to_vec().try_into().unwrap());
-
-    for i in 0..4 {
-        for j in 0..4 {
-            result[4 * j + i] = state[i][j];
-        }
+    result[..text.len()].copy_from_slice(text);
+    for _ in 0..pad_size {
+        result.push(pad_size as u8);
     }
     result
 }
@@ -203,50 +172,6 @@ fn add_round_key(mut state: [[u8; 4]; 4], key: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
     state
 }
 
-pub fn dencrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<String, String> {
-    if text.len() % 16 != 0 {
-        return Err("Error!".to_string());
-    }
-    let mode_index = mode as usize;
-    let key_schedule = key_expansion(key, &mode_index);
-    let mut result = vec![0; text.len()];
-    let mut start_index = 0;
-    for block in text.chunks(16) {
-        let temp = dencrypt_block(block.try_into().unwrap(), &key_schedule, &mode_index);
-        let end_index = start_index + temp.len();
-        result[start_index..end_index].copy_from_slice(&temp[..]);
-        start_index += temp.len();
-    }
-    Ok(String::from_utf8(result.to_vec()).unwrap())
-}
-
-fn dencrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8; 16] {
-    let mut result = [0; 16];
-
-    let mut state = [[0; 4]; 4];
-    for i in 0..16 {
-        state[i % 4][i / 4] = block[i];
-    }
-    state = add_round_key(state, key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4].to_vec().try_into().unwrap());
-    state = inv_shift_rows(state);
-    state = inv_sub_bytes(state);
-
-    for i in (1..NR[*mode]).rev() {
-        state = add_round_key(state, key_schedule[i * 4..(i+1)*4].to_vec().try_into().unwrap());
-        state = inv_mix_columns(state);
-        state = inv_shift_rows(state);
-        state = inv_sub_bytes(state);
-    }
-    state = add_round_key(state, key_schedule[0..4].to_vec().try_into().unwrap());
-
-    for i in 0..4 {
-        for j in 0..4 {
-            result[4 * j + i] = state[i][j];
-        }
-    }
-    result
-}
-
 fn inv_sub_bytes(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
     for i in 0..state.len() {
         for j in 0..state[i].len() {
@@ -275,4 +200,90 @@ fn inv_mix_columns(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
         state[3][i]= g_mul(temp[3], 14) ^ g_mul(temp[2], 9) ^ g_mul(temp[1], 13) ^ g_mul(temp[0], 11);
     }
     state
+}
+
+pub fn encrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<Vec<u8>, String> {
+    let input_bytes = pad(text);
+
+    let mode_index = mode as usize;
+    let key_schedule = key_expansion(key, &mode_index);
+
+    let mut result = vec![0; input_bytes.len()];
+    let mut start_index = 0;
+    for block in input_bytes.chunks(16) {
+        let temp = encrypt_block(block.try_into().unwrap(), &key_schedule, &mode_index);
+        let end_index = start_index + temp.len();
+        result[start_index..end_index].copy_from_slice(&temp[..]);
+        start_index += temp.len();
+    }
+    Ok(result)
+}
+
+fn encrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8; 16] {
+    let mut result = [0; 16];
+    let mut state = [[0; 4]; 4];
+
+    for i in 0..16 {
+        state[i % 4][i / 4] = block[i];
+    }
+    state = add_round_key(state, key_schedule[0..4].to_vec().try_into().unwrap());
+
+    for i in 1..NR[*mode] {
+        state = sub_bytes(state);
+        state = shift_rows(state);
+        state = mix_columns(state);
+        state = add_round_key(state, key_schedule[i * 4..(i+1)*4].to_vec().try_into().unwrap());
+    }
+    state = sub_bytes(state);
+    state = shift_rows(state);
+    state = add_round_key(state, key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4].to_vec().try_into().unwrap());
+
+    for i in 0..4 {
+        for j in 0..4 {
+            result[4 * j + i] = state[i][j];
+        }
+    }
+    result
+}
+
+pub fn dencrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<String, String> {
+    let mode_index = mode as usize;
+    let key_schedule = key_expansion(key, &mode_index);
+    let mut result = vec![0; text.len()];
+    let mut start_index = 0;
+    for block in text.chunks(16) {
+        let temp = dencrypt_block(block.try_into().unwrap(), &key_schedule, &mode_index);
+        let end_index = start_index + temp.len();
+        result[start_index..end_index].copy_from_slice(&temp[..]);
+        start_index += temp.len();
+    }
+    let text_size = *result.last().unwrap() as usize;
+    Ok(String::from_utf8(result[..result.len() - text_size].to_vec()).unwrap())
+}
+
+fn dencrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8; 16] {
+    let mut result = [0; 16];
+    let mut state = [[0; 4]; 4];
+    
+    for i in 0..16 {
+        state[i % 4][i / 4] = block[i];
+    }
+    state = add_round_key(state, key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4].to_vec().try_into().unwrap());
+    state = inv_shift_rows(state);
+    state = inv_sub_bytes(state);
+
+    for i in (1..NR[*mode]).rev() {
+        state = add_round_key(state, key_schedule[i * 4..(i+1)*4].to_vec().try_into().unwrap());
+        state = inv_mix_columns(state);
+        state = inv_shift_rows(state);
+        state = inv_sub_bytes(state);
+    }
+    state = add_round_key(state, key_schedule[0..4].to_vec().try_into().unwrap());
+
+    for i in 0..4 {
+        for j in 0..4 {
+            result[4 * j + i] = state[i][j];
+        }
+    }
+    result
 }

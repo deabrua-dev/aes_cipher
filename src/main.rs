@@ -9,9 +9,9 @@ fn main() {
     // println!("7 199 31 226 85 27 164 216 210 149 112 91 40 47 215 87");
     let encrypted = encrypt(&text.clone(), key, AesMode::AES256).unwrap();
     println!("{}", encrypted.len());
-    let arr: [u8; 32] = encrypted.try_into().unwrap();
+    let arr: [u8; 48] = encrypted.try_into().unwrap();
     for i in arr {
-        print!("{:0>2x} ", i);
+        print!("{:0>2x}", i);
     }
     println!();
     println!("{}", dencrypt(&arr, key, AesMode::AES256).unwrap());
