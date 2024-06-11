@@ -1,3 +1,7 @@
+use hex::FromHex;
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum AesMode {
     AES128 = 0,
     AES192 = 1,
@@ -20,10 +24,10 @@ const RIJNDAEL_AES_SBOX: [u8; 256] = [
     0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
     0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
     0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
+    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 ];
 
-const INVERSE_RIJNDAEL_AES_SBOX: [u8; 256] = [ 
+const INVERSE_RIJNDAEL_AES_SBOX: [u8; 256] = [
     0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
     0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
     0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
@@ -39,13 +43,15 @@ const INVERSE_RIJNDAEL_AES_SBOX: [u8; 256] = [
     0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
     0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
     0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
-    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
+    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d,
 ];
 
 const RCON: [u8; 10] = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36];
 
 const NK: [usize; 3] = [4, 6, 8];
 const NR: [usize; 3] = [10, 12, 14];
+
+const KS: [usize; 3] = [128, 192, 256];
 
 fn sub_word(word: [u8; 4]) -> [u8; 4] {
     let mut result = [0; 4];
@@ -94,8 +100,13 @@ fn key_expansion(key: &[u8], mode: &usize) -> Vec<[u8; 4]> {
 
     let (mut byte_one, mut byte_two, mut byte_three, mut byte_four) = (0, 1, 2, 3);
     while index != NK[*mode] {
-        expanded_key[index] = [key[byte_one], key[byte_two], key[byte_three], key[byte_four]];
-        byte_one += 4; 
+        expanded_key[index] = [
+            key[byte_one],
+            key[byte_two],
+            key[byte_three],
+            key[byte_four],
+        ];
+        byte_one += 4;
         byte_two += 4;
         byte_three += 4;
         byte_four += 4;
@@ -143,9 +154,12 @@ fn sub_bytes(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
 }
 
 fn shift_rows(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
-    (state[1][0], state[1][1], state[1][2], state[1][3]) = (state[1][1], state[1][2], state[1][3], state[1][0]);
-    (state[2][0], state[2][1], state[2][2], state[2][3]) = (state[2][2], state[2][3], state[2][0], state[2][1]);
-    (state[3][0], state[3][1], state[3][2], state[3][3]) = (state[3][3], state[3][0], state[3][1], state[3][2]);
+    (state[1][0], state[1][1], state[1][2], state[1][3]) =
+        (state[1][1], state[1][2], state[1][3], state[1][0]);
+    (state[2][0], state[2][1], state[2][2], state[2][3]) =
+        (state[2][2], state[2][3], state[2][0], state[2][1]);
+    (state[3][0], state[3][1], state[3][2], state[3][3]) =
+        (state[3][3], state[3][0], state[3][1], state[3][2]);
     state
 }
 
@@ -155,10 +169,10 @@ fn mix_columns(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
         for j in 0..4 {
             temp[j] = state[j][i];
         }
-        state[0][i]= g_mul(temp[0], 2) ^ g_mul(temp[3], 1) ^ g_mul(temp[2], 1) ^ g_mul(temp[1], 3);
-        state[1][i]= g_mul(temp[1], 2) ^ g_mul(temp[0], 1) ^ g_mul(temp[3], 1) ^ g_mul(temp[2], 3);
-        state[2][i]= g_mul(temp[2], 2) ^ g_mul(temp[1], 1) ^ g_mul(temp[0], 1) ^ g_mul(temp[3], 3);
-        state[3][i]= g_mul(temp[3], 2) ^ g_mul(temp[2], 1) ^ g_mul(temp[1], 1) ^ g_mul(temp[0], 3);
+        state[0][i] = g_mul(temp[0], 2) ^ g_mul(temp[3], 1) ^ g_mul(temp[2], 1) ^ g_mul(temp[1], 3);
+        state[1][i] = g_mul(temp[1], 2) ^ g_mul(temp[0], 1) ^ g_mul(temp[3], 1) ^ g_mul(temp[2], 3);
+        state[2][i] = g_mul(temp[2], 2) ^ g_mul(temp[1], 1) ^ g_mul(temp[0], 1) ^ g_mul(temp[3], 3);
+        state[3][i] = g_mul(temp[3], 2) ^ g_mul(temp[2], 1) ^ g_mul(temp[1], 1) ^ g_mul(temp[0], 3);
     }
     state
 }
@@ -182,9 +196,12 @@ fn inv_sub_bytes(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
 }
 
 fn inv_shift_rows(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
-    (state[1][0], state[1][1], state[1][2], state[1][3]) = (state[1][3], state[1][0], state[1][1], state[1][2]);
-    (state[2][0], state[2][1], state[2][2], state[2][3]) = (state[2][2], state[2][3], state[2][0], state[2][1]);
-    (state[3][0], state[3][1], state[3][2], state[3][3]) = (state[3][1], state[3][2], state[3][3], state[3][0]);
+    (state[1][0], state[1][1], state[1][2], state[1][3]) =
+        (state[1][3], state[1][0], state[1][1], state[1][2]);
+    (state[2][0], state[2][1], state[2][2], state[2][3]) =
+        (state[2][2], state[2][3], state[2][0], state[2][1]);
+    (state[3][0], state[3][1], state[3][2], state[3][3]) =
+        (state[3][1], state[3][2], state[3][3], state[3][0]);
     state
 }
 
@@ -194,10 +211,14 @@ fn inv_mix_columns(mut state: [[u8; 4]; 4]) -> [[u8; 4]; 4] {
         for j in 0..4 {
             temp[j] = state[j][i];
         }
-        state[0][i]= g_mul(temp[0], 14) ^ g_mul(temp[3], 9) ^ g_mul(temp[2], 13) ^ g_mul(temp[1], 11);
-        state[1][i]= g_mul(temp[1], 14) ^ g_mul(temp[0], 9) ^ g_mul(temp[3], 13) ^ g_mul(temp[2], 11);
-        state[2][i]= g_mul(temp[2], 14) ^ g_mul(temp[1], 9) ^ g_mul(temp[0], 13) ^ g_mul(temp[3], 11);
-        state[3][i]= g_mul(temp[3], 14) ^ g_mul(temp[2], 9) ^ g_mul(temp[1], 13) ^ g_mul(temp[0], 11);
+        state[0][i] =
+            g_mul(temp[0], 14) ^ g_mul(temp[3], 9) ^ g_mul(temp[2], 13) ^ g_mul(temp[1], 11);
+        state[1][i] =
+            g_mul(temp[1], 14) ^ g_mul(temp[0], 9) ^ g_mul(temp[3], 13) ^ g_mul(temp[2], 11);
+        state[2][i] =
+            g_mul(temp[2], 14) ^ g_mul(temp[1], 9) ^ g_mul(temp[0], 13) ^ g_mul(temp[3], 11);
+        state[3][i] =
+            g_mul(temp[3], 14) ^ g_mul(temp[2], 9) ^ g_mul(temp[1], 13) ^ g_mul(temp[0], 11);
     }
     state
 }
@@ -206,6 +227,19 @@ pub fn encrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<Vec<u8>, String
     let input_bytes = pad(text);
 
     let mode_index = mode as usize;
+    let mode_sizes = KS[mode_index];
+
+    if text.len() == 0 {
+        return Err("Input is empty".to_string());
+    }
+
+    if key.len() != (mode_sizes / 8) {
+        return Err(format!(
+            "Length of secret key should be {} for {} bits key size",
+            mode_sizes / 8,
+            mode_sizes
+        ));
+    }
     let key_schedule = key_expansion(key, &mode_index);
 
     let mut result = vec![0; input_bytes.len()];
@@ -232,11 +266,23 @@ fn encrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8
         state = sub_bytes(state);
         state = shift_rows(state);
         state = mix_columns(state);
-        state = add_round_key(state, key_schedule[i * 4..(i+1)*4].to_vec().try_into().unwrap());
+        state = add_round_key(
+            state,
+            key_schedule[i * 4..(i + 1) * 4]
+                .to_vec()
+                .try_into()
+                .unwrap(),
+        );
     }
     state = sub_bytes(state);
     state = shift_rows(state);
-    state = add_round_key(state, key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4].to_vec().try_into().unwrap());
+    state = add_round_key(
+        state,
+        key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4]
+            .to_vec()
+            .try_into()
+            .unwrap(),
+    );
 
     for i in 0..4 {
         for j in 0..4 {
@@ -246,13 +292,26 @@ fn encrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8
     result
 }
 
-pub fn dencrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<String, String> {
+pub fn decrypt(input: &str, key: &[u8], mode: AesMode) -> Result<String, String> {
+    if input.len() == 0 {
+        return Err("Input is empty".to_string());
+    }
+    let text: Vec<u8> = hex::decode(input).unwrap();
     let mode_index = mode as usize;
+    let mode_sizes = KS[mode_index];
+
+    if key.len() != (mode_sizes / 8) {
+        return Err(format!(
+            "Length of secret key should be {} for {} bits key size",
+            mode_sizes / 8,
+            mode_sizes
+        ));
+    }
     let key_schedule = key_expansion(key, &mode_index);
     let mut result = vec![0; text.len()];
     let mut start_index = 0;
     for block in text.chunks(16) {
-        let temp = dencrypt_block(block.try_into().unwrap(), &key_schedule, &mode_index);
+        let temp = decrypt_block(block.try_into().unwrap(), &key_schedule, &mode_index);
         let end_index = start_index + temp.len();
         result[start_index..end_index].copy_from_slice(&temp[..]);
         start_index += temp.len();
@@ -261,19 +320,31 @@ pub fn dencrypt(text: &[u8], key: &[u8], mode: AesMode) -> Result<String, String
     Ok(String::from_utf8(result[..result.len() - text_size].to_vec()).unwrap())
 }
 
-fn dencrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8; 16] {
+fn decrypt_block(block: [u8; 16], key_schedule: &[[u8; 4]], mode: &usize) -> [u8; 16] {
     let mut result = [0; 16];
     let mut state = [[0; 4]; 4];
-    
+
     for i in 0..16 {
         state[i % 4][i / 4] = block[i];
     }
-    state = add_round_key(state, key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4].to_vec().try_into().unwrap());
+    state = add_round_key(
+        state,
+        key_schedule[4 * NR[*mode]..4 * NR[*mode] + 4]
+            .to_vec()
+            .try_into()
+            .unwrap(),
+    );
     state = inv_shift_rows(state);
     state = inv_sub_bytes(state);
 
     for i in (1..NR[*mode]).rev() {
-        state = add_round_key(state, key_schedule[i * 4..(i+1)*4].to_vec().try_into().unwrap());
+        state = add_round_key(
+            state,
+            key_schedule[i * 4..(i + 1) * 4]
+                .to_vec()
+                .try_into()
+                .unwrap(),
+        );
         state = inv_mix_columns(state);
         state = inv_shift_rows(state);
         state = inv_sub_bytes(state);

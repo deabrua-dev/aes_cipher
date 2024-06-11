@@ -7,3 +7,10 @@ edition = "2021"
 
 [dependencies]
 aes = "0.8.3"
+eframe = { version = "0.27.2", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+hex = "0.4"
+native-dialog = "0.7.0"
