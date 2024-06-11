@@ -5,6 +5,7 @@ mod rijndael_aes;
 use eframe::egui::{self, CentralPanel, Color32, Context, Frame, RichText, Vec2};
 use native_dialog::{MessageDialog, MessageType};
 use rijndael_aes::*;
+use std::panic::catch_unwind;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
@@ -56,171 +57,212 @@ impl eframe::App for AesApp {
                     .fill(Color32::from_rgb(220, 220, 220)),
             )
             .show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.heading(
-                        RichText::new("Aes encryption and decryption")
-                            .color(Color32::from_rgb(0, 0, 0))
-                            .size(36.0),
-                    );
-                    ui.add_space(25.0);
-                    ui.horizontal_centered(|ui| {
-                        ui.vertical(|ui| {
-                            let label_plaintext = ui.label(
-                                RichText::new("Encryption Text")
-                                    .color(Color32::from_rgb(0, 0, 0))
-                                    .size(18.0),
-                            );
-                            ui.text_edit_multiline(&mut self.plaintext)
-                                .labelled_by(label_plaintext.id);
-                            ui.add_space(10.0);
-                            let label_key = ui.label(
-                                RichText::new("Secret Key")
-                                    .color(Color32::from_rgb(0, 0, 0))
-                                    .size(18.0),
-                            );
-                            ui.text_edit_singleline(&mut self.encrypt_key)
-                                .labelled_by(label_key.id);
-                            ui.add_space(10.0);
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(
-                                    &mut self.encrypt_mode,
-                                    AesMode::AES128,
-                                    RichText::new("Aes-128")
+                ui.with_layout(
+                    egui::Layout::top_down(egui::Align::Center).with_cross_justify(true),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_source("first")
+                            .show(ui, |ui| {
+                                ui.heading(
+                                    RichText::new("Aes encryption and decryption")
                                         .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
+                                        .size(36.0),
                                 );
-                                ui.selectable_value(
-                                    &mut self.encrypt_mode,
-                                    AesMode::AES192,
-                                    RichText::new("Aes-192")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                );
-                                ui.selectable_value(
-                                    &mut self.encrypt_mode,
-                                    AesMode::AES256,
-                                    RichText::new("Aes-256")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                );
+                                ui.add_space(25.0);
+                                ui.horizontal_centered(|ui| {
+                                    ui.vertical(|ui| {
+                                        let label_plaintext = ui.label(
+                                            RichText::new("Encryption Text")
+                                                .color(Color32::from_rgb(0, 0, 0))
+                                                .size(18.0),
+                                        );
+                                        ui.text_edit_multiline(&mut self.plaintext)
+                                            .labelled_by(label_plaintext.id);
+                                        ui.add_space(10.0);
+                                        let label_key = ui.label(
+                                            RichText::new("Secret Key")
+                                                .color(Color32::from_rgb(0, 0, 0))
+                                                .size(18.0),
+                                        );
+                                        ui.text_edit_singleline(&mut self.encrypt_key)
+                                            .labelled_by(label_key.id);
+                                        ui.add_space(10.0);
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(
+                                                &mut self.encrypt_mode,
+                                                AesMode::AES128,
+                                                RichText::new("Aes-128")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            );
+                                            ui.selectable_value(
+                                                &mut self.encrypt_mode,
+                                                AesMode::AES192,
+                                                RichText::new("Aes-192")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            );
+                                            ui.selectable_value(
+                                                &mut self.encrypt_mode,
+                                                AesMode::AES256,
+                                                RichText::new("Aes-256")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            );
+                                        });
+                                        ui.add_space(10.0);
+                                        if ui
+                                            .button(
+                                                RichText::new("Encrypt")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            )
+                                            .clicked()
+                                        {
+                                            let result = catch_unwind(|| {
+                                                encrypt(
+                                                    &self.plaintext.as_bytes(),
+                                                    &self.encrypt_key.as_bytes(),
+                                                    self.encrypt_mode,
+                                                )
+                                            });
+                                            match result {
+                                                Ok(ok) => match ok {
+                                                    Ok(ok) => self.encrypt_result = hex::encode(ok),
+                                                    Err(err) => {
+                                                        MessageDialog::new()
+                                                            .set_type(MessageType::Warning)
+                                                            .set_title("Warning!")
+                                                            .set_text(&err)
+                                                            .show_alert()
+                                                            .unwrap();
+                                                    }
+                                                },
+                                                Err(err) => {
+                                                    let message = match err.downcast_ref::<&str>() {
+                                                        Some(err) => err,
+                                                        None => "Fatal error",
+                                                    };
+                                                    MessageDialog::new()
+                                                        .set_type(MessageType::Error)
+                                                        .set_title("Error!")
+                                                        .set_text(message)
+                                                        .show_alert()
+                                                        .unwrap();
+                                                }
+                                            }
+                                        }
+                                    });
+                                    ui.add_space(10.0);
+                                    ui.vertical(|ui| {
+                                        let label_encription_result = ui.label(
+                                            RichText::new("Encrypted Text")
+                                                .color(Color32::from_rgb(0, 0, 0))
+                                                .size(18.0),
+                                        );
+                                        ui.text_edit_multiline(&mut self.encrypt_result)
+                                            .labelled_by(label_encription_result.id);
+                                    });
+                                });
+                                ui.separator();
+                                ui.horizontal_centered(|ui| {
+                                    ui.vertical(|ui| {
+                                        let label_ciphertext = ui.label(
+                                            RichText::new("Encrypted Text")
+                                                .color(Color32::from_rgb(0, 0, 0))
+                                                .size(18.0),
+                                        );
+                                        ui.text_edit_multiline(&mut self.ciphertext)
+                                            .labelled_by(label_ciphertext.id);
+                                        ui.add_space(10.0);
+                                        let label_key = ui.label(
+                                            RichText::new("Secret Key")
+                                                .color(Color32::from_rgb(0, 0, 0))
+                                                .size(18.0),
+                                        );
+                                        ui.text_edit_singleline(&mut self.decrypt_key)
+                                            .labelled_by(label_key.id);
+                                        ui.add_space(10.0);
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(
+                                                &mut self.decrypt_mode,
+                                                AesMode::AES128,
+                                                RichText::new("Aes-128")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            );
+                                            ui.selectable_value(
+                                                &mut self.decrypt_mode,
+                                                AesMode::AES192,
+                                                RichText::new("Aes-192")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            );
+                                            ui.selectable_value(
+                                                &mut self.decrypt_mode,
+                                                AesMode::AES256,
+                                                RichText::new("Aes-256")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            );
+                                        });
+                                        ui.add_space(10.0);
+                                        if ui
+                                            .button(
+                                                RichText::new("Decrypt")
+                                                    .color(Color32::from_rgb(0, 0, 0))
+                                                    .size(16.0),
+                                            )
+                                            .clicked()
+                                        {
+                                            let result = catch_unwind(|| {
+                                                decrypt(
+                                                    &self.ciphertext,
+                                                    &self.decrypt_key.as_bytes(),
+                                                    self.decrypt_mode,
+                                                )
+                                            });
+                                            match result {
+                                                Ok(ok) => match ok {
+                                                    Ok(ok) => self.decrypt_result = ok,
+                                                    Err(err) => {
+                                                        MessageDialog::new()
+                                                            .set_type(MessageType::Warning)
+                                                            .set_title("Warning!")
+                                                            .set_text(&err)
+                                                            .show_alert()
+                                                            .unwrap();
+                                                    }
+                                                },
+                                                Err(err) => {
+                                                    let message = match err.downcast_ref::<&str>() {
+                                                        Some(err) => err,
+                                                        None => "Fatal error",
+                                                    };
+                                                    MessageDialog::new()
+                                                        .set_type(MessageType::Error)
+                                                        .set_title("Error!")
+                                                        .set_text(message)
+                                                        .show_alert()
+                                                        .unwrap();
+                                                }
+                                            }
+                                        }
+                                    });
+                                    ui.add_space(10.0);
+                                    ui.vertical(|ui| {
+                                        let label_decryption_result = ui.label(
+                                            RichText::new("Decrypted Text")
+                                                .color(Color32::from_rgb(0, 0, 0))
+                                                .size(18.0),
+                                        );
+                                        ui.text_edit_multiline(&mut self.decrypt_result)
+                                            .labelled_by(label_decryption_result.id);
+                                    });
+                                });
                             });
-                            ui.add_space(10.0);
-                            if ui
-                                .button(
-                                    RichText::new("Encrypt")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                )
-                                .clicked()
-                            {
-                                match encrypt(
-                                    &self.plaintext.as_bytes(),
-                                    &self.encrypt_key.as_bytes(),
-                                    self.encrypt_mode,
-                                ) {
-                                    Ok(ok) => self.encrypt_result = hex::encode(ok),
-                                    Err(err) => {
-                                        MessageDialog::new()
-                                            .set_type(MessageType::Warning)
-                                            .set_title("Error")
-                                            .set_text(&err)
-                                            .show_alert()
-                                            .unwrap();
-                                    }
-                                }
-                            }
-                        });
-                        ui.add_space(10.0);
-                        ui.vertical(|ui| {
-                            let label_encription_result = ui.label(
-                                RichText::new("Encrypted Text")
-                                    .color(Color32::from_rgb(0, 0, 0))
-                                    .size(18.0),
-                            );
-                            ui.text_edit_multiline(&mut self.encrypt_result)
-                                .labelled_by(label_encription_result.id);
-                        });
-                    });
-                    ui.separator();
-                    ui.horizontal_centered(|ui| {
-                        ui.vertical(|ui| {
-                            let label_ciphertext = ui.label(
-                                RichText::new("Encrypted Text")
-                                    .color(Color32::from_rgb(0, 0, 0))
-                                    .size(18.0),
-                            );
-                            ui.text_edit_multiline(&mut self.ciphertext)
-                                .labelled_by(label_ciphertext.id);
-                            ui.add_space(10.0);
-                            let label_key = ui.label(
-                                RichText::new("Secret Key")
-                                    .color(Color32::from_rgb(0, 0, 0))
-                                    .size(18.0),
-                            );
-                            ui.text_edit_singleline(&mut self.decrypt_key)
-                                .labelled_by(label_key.id);
-                            ui.add_space(10.0);
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(
-                                    &mut self.decrypt_mode,
-                                    AesMode::AES128,
-                                    RichText::new("Aes-128")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                );
-                                ui.selectable_value(
-                                    &mut self.decrypt_mode,
-                                    AesMode::AES192,
-                                    RichText::new("Aes-192")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                );
-                                ui.selectable_value(
-                                    &mut self.decrypt_mode,
-                                    AesMode::AES256,
-                                    RichText::new("Aes-256")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                );
-                            });
-                            ui.add_space(10.0);
-                            if ui
-                                .button(
-                                    RichText::new("Decrypt")
-                                        .color(Color32::from_rgb(0, 0, 0))
-                                        .size(16.0),
-                                )
-                                .clicked()
-                            {
-                                match decrypt(
-                                    &self.ciphertext,
-                                    &self.decrypt_key.as_bytes(),
-                                    self.decrypt_mode,
-                                ) {
-                                    Ok(ok) => self.decrypt_result = ok,
-                                    Err(err) => {
-                                        MessageDialog::new()
-                                            .set_type(MessageType::Warning)
-                                            .set_title("Error")
-                                            .set_text(&err)
-                                            .show_alert()
-                                            .unwrap();
-                                    }
-                                }
-                            }
-                        });
-                        ui.add_space(10.0);
-                        ui.vertical(|ui| {
-                            let label_decryption_result = ui.label(
-                                RichText::new("Decrypted Text")
-                                    .color(Color32::from_rgb(0, 0, 0))
-                                    .size(18.0),
-                            );
-                            ui.text_edit_multiline(&mut self.decrypt_result)
-                                .labelled_by(label_decryption_result.id);
-                        });
-                    });
-                });
+                    },
+                );
             });
     }
 }

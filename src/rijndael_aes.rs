@@ -1,5 +1,3 @@
-use hex::FromHex;
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum AesMode {
