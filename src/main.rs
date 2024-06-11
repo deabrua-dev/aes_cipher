@@ -11,7 +11,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_maximize_button(false)
             .with_resizable(false)
-            .with_title("Aes encription and decryption")
+            .with_title("Aes encryption and decryption")
             .with_min_inner_size(Vec2::new(620.0, 600.0))
             .with_max_inner_size(Vec2::new(620.0, 600.0)),
         centered: true,
@@ -58,7 +58,7 @@ impl eframe::App for AesApp {
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.heading(
-                        RichText::new("Aes encription and decryption")
+                        RichText::new("Aes encryption and decryption")
                             .color(Color32::from_rgb(0, 0, 0))
                             .size(36.0),
                     );
